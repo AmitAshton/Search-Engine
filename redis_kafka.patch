@@ -1,0 +1,166 @@
+Index: src/main/java/com/handson/searchengine/kafka/Consumer.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/searchengine/kafka/Consumer.java b/src/main/java/com/handson/searchengine/kafka/Consumer.java
+new file mode 100644
+--- /dev/null	(date 1644416638815)
++++ b/src/main/java/com/handson/searchengine/kafka/Consumer.java	(date 1644416638815)
+@@ -0,0 +1,31 @@
++package com.handson.searchengine.kafka;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.handson.searchengine.crawler.Crawler;
++import org.apache.kafka.clients.consumer.ConsumerRecord;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.kafka.annotation.KafkaListener;
++import org.springframework.stereotype.Component;
++
++import java.util.Optional;
++
++import static com.handson.searchengine.kafka.Producer.APP_TOPIC;
++
++@Component
++public class Consumer {
++
++
++    @KafkaListener(topics = {APP_TOPIC})
++    public void listen(ConsumerRecord<?, ?> record){
++
++        Optional<?> kafkaMessage = Optional.ofNullable(record.value());
++
++        if (kafkaMessage.isPresent()) {
++
++            Object message = kafkaMessage.get();
++            System.out.println("---->" + record);
++            System.out.println("---->" + message);
++
++        }
++    }
++}
+Index: src/main/java/com/handson/searchengine/config/RedisConfig.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/searchengine/config/RedisConfig.java b/src/main/java/com/handson/searchengine/config/RedisConfig.java
+new file mode 100644
+--- /dev/null	(date 1644412988357)
++++ b/src/main/java/com/handson/searchengine/config/RedisConfig.java	(date 1644412988357)
+@@ -0,0 +1,43 @@
++package com.handson.searchengine.config;
++
++import com.fasterxml.jackson.annotation.JsonAutoDetect;
++import com.fasterxml.jackson.annotation.PropertyAccessor;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.data.redis.connection.RedisConnectionFactory;
++import org.springframework.data.redis.core.RedisTemplate;
++import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
++import org.springframework.data.redis.serializer.StringRedisSerializer;
++
++import java.text.SimpleDateFormat;
++
++@Configuration
++public class RedisConfig {
++
++    @Bean
++    public RedisTemplate<String,Object> redisTemplate(RedisConnectionFactory redisConnectionFactory){
++        /**
++         * Configure your own redisTemplate
++         * StringRedisTemplate uses StringRedisSerializer to serialize by default
++         * RedisTemplate uses JdkSerializationRedisSerializer to serialize by default
++         */
++        RedisTemplate<String, Object> redisTemplate = new RedisTemplate<>();
++        redisTemplate.setConnectionFactory(redisConnectionFactory);
++
++        //Open the default type
++        ObjectMapper objectMapper = new ObjectMapper();
++        objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
++        objectMapper.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
++        objectMapper.setDateFormat(new SimpleDateFormat("yyyy/MM/dd HH:mm:ss"));
++        Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer(Object.class);
++        jackson2JsonRedisSerializer.setObjectMapper(objectMapper);
++
++        redisTemplate.setKeySerializer(new StringRedisSerializer());
++        redisTemplate.setValueSerializer(new StringRedisSerializer());
++        redisTemplate.setHashKeySerializer(new StringRedisSerializer());
++        redisTemplate.setHashValueSerializer(new StringRedisSerializer());
++        redisTemplate.afterPropertiesSet();
++        return redisTemplate;
++    }
++}
+Index: src/main/java/com/handson/searchengine/kafka/Producer.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/searchengine/kafka/Producer.java b/src/main/java/com/handson/searchengine/kafka/Producer.java
+new file mode 100644
+--- /dev/null	(date 1644413610926)
++++ b/src/main/java/com/handson/searchengine/kafka/Producer.java	(date 1644413610926)
+@@ -0,0 +1,24 @@
++package com.handson.searchengine.kafka;
++
++import com.fasterxml.jackson.core.JsonProcessingException;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.kafka.core.KafkaTemplate;
++import org.springframework.stereotype.Component;
++
++
++@Component
++public class Producer {
++
++    public static final String APP_TOPIC = "searchengine";
++    @Autowired
++    ObjectMapper om;
++
++    @Autowired
++    private KafkaTemplate kafkaTemplate;
++
++    public void send(Object message) throws JsonProcessingException {
++        kafkaTemplate.send(APP_TOPIC, om.writeValueAsString(message));
++    }
++
++}
+Index: docker-compose.yml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/docker-compose.yml b/docker-compose.yml
+new file mode 100644
+--- /dev/null	(date 1644412988383)
++++ b/docker-compose.yml	(date 1644412988383)
+@@ -0,0 +1,28 @@
++version: '2'
++services:
++  zookeeper:
++    image: confluentinc/cp-zookeeper:latest
++    environment:
++      ZOOKEEPER_CLIENT_PORT: 2181
++      ZOOKEEPER_TICK_TIME: 2000
++    ports:
++      - 2181:2181
++
++  kafka:
++    image: confluentinc/cp-kafka:latest
++    depends_on:
++      - zookeeper
++    ports:
++      - 9092:9092
++    environment:
++      KAFKA_BROKER_ID: 1
++      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
++      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
++      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
++      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
++      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
++  redis:
++    image: redis
++    ports:
++      - 6379:6379
++    privileged: true
